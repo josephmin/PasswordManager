@@ -34,7 +34,6 @@ public class PasswordDatabase implements Serializable {
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
-
     }
 
     public void addEntry(String alias, String[] entry)
@@ -96,7 +95,6 @@ public class PasswordDatabase implements Serializable {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
         return b;
     }
 }

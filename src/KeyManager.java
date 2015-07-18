@@ -1,174 +1,201 @@
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.security.KeyFactory;
+import java.lang.IllegalArgumentException;
+import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.spec.KeySpec;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.interfaces.RSAPublicKey;
+
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 
 public class KeyManager {
-    private String dir;
-    private String username;
-    private char[] passwd;
-    private File keyDir;
-    private File publicKeyFile;
-    private File privateKeyFile;
+    private static final int IV_LENGTH = 16;
+    private static final int AES_KEY_LENGTH = 128; // Java does not support 192 or 256 bit AES keys
+    private static final int AES_BYTES = AES_KEY_LENGTH/8;
+    private static final int HMAC_KEY_LENGTH = 256; // HMAC SHA256
+    private static final int HMAC_BYTES = HMAC_KEY_LENGTH/8;
+    private static final int NUM_ITERATIONS = 32768; // (0.5)*(2^16)
+    private static final int WRAPPED_AES_LENGTH = 32;
+    private static final int RSA_WRAPPED_AES_LENGTH = 256;
+    private static final int WRAPPED_HMAC_LENGTH = 48;
+    private static final String SECURE_RANDOM_ALGORITHM = "NativePRNGNonBlocking";
+    private static final String PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256";
+
+    private SecureRandom rand;
+    private char[] password;
+    private byte[] iv;
+    private Key pbKey; // password-based key
+    private Key aesKey; // AES key
+    private Key hmacKey; // HMAC key
     private PublicKey publicKey;
     private PrivateKey privateKey;
 
-    @SuppressWarnings("unused")
-    private KeyManager() {
-        // empty inaccessible constructor
+    public KeyManager() {
+        try {
+            this.rand = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM); // if available, use /dev/urandom
+        } catch (NoSuchAlgorithmException e) {
+            this.rand = new SecureRandom(); // else use default
+        }
     }
 
-    public KeyManager(String username, char[] passwd) {
-        this.username = username;
-        this.passwd = passwd;
-        this.dir = "keys/";
-        keyDir = new File(this.dir);
-        keyDir.mkdir();
-        this.publicKeyFile = new File(this.dir + this.username + ".pub");
-        this.privateKeyFile = new File(this.dir + this.username + ".key");
-        this.publicKey = null;
-        this.privateKey = null;
+    public KeyManager(char[] password) {
+        this();
+        this.password = password;
+        this.generateIV();
+        this.generatePbKey();
+        this.generateAesKey();
+        this.generateHmacKey();
     }
 
-    public void generateKeys() {
-        KeyPairGenerator keygen = null;
-        KeyPair keys;
-        PublicKey publicKey;
-        PrivateKey privateKey;
+    public KeyManager(char[] password, byte[] header) {
+        this();
+        this.password = password;
+        this.iv = new byte[IV_LENGTH];
+        byte[] kBytes = new byte[WRAPPED_AES_LENGTH];
+        byte[] lBytes = new byte[WRAPPED_HMAC_LENGTH];
+        ByteArrayInputStream bais = new ByteArrayInputStream(header);
 
         try {
-            keygen = KeyPairGenerator.getInstance("RSA");
-            keygen.initialize(2048, new SecureRandom());
-        } catch (NoSuchAlgorithmException e) { // impossible
-            e.printStackTrace();
-            System.exit(1);
-        }
-
-        if (keygen != null) {
-            keys = keygen.generateKeyPair();
-            publicKey = keys.getPublic();
-            privateKey = keys.getPrivate();
-            writePublicKey(publicKey);
-            writePrivateKey(privateKey);
-            System.out.println("Public key written to " + publicKeyFile.getPath());
-            System.out.println("Private key written to " + privateKeyFile.getPath() + "\n");
-        }
-    }
-
-    public void readPublicKey() throws FileNotFoundException {
-        if (this.publicKeyFile.exists()) {
-            ObjectInputStream ois;
-            Object o;
-
-            try {
-                ois = new ObjectInputStream(new FileInputStream(publicKeyFile));
-                o = ois.readObject();
-                ois.close();
-                if (o instanceof RSAPublicKey) {
-                    publicKey = (PublicKey) o;
-                } else {
-                    System.err.println("The file " + publicKeyFile.getPath() + " is not a valid public key.\n");
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.exit(1);
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
-                System.exit(1);
-            }
-        } else {
-            throw new FileNotFoundException();
-        }
-    }
-
-    public void readPrivateKey() throws IncorrectPasswordException, FileNotFoundException {
-        if (this.privateKeyFile.exists()) {
-            Crypto c = new Crypto(this.passwd);
-
-            FileInputStream fis;
-            byte[] inputBytes = null;
-
-            try {
-                fis = new FileInputStream(this.privateKeyFile);
-                inputBytes = new byte[fis.available()];
-                fis.read(inputBytes);
-                fis.close();
-                privateKey = KeyFactory.getInstance("RSA").generatePrivate(
-                    new PKCS8EncodedKeySpec(
-                        c.decryptKey(inputBytes)
-                        )
-                    );
-            } catch (NoSuchAlgorithmException e) {
-                e.printStackTrace();
-                System.exit(1);
-            } catch (InvalidKeySpecException e) {
-                e.printStackTrace();
-                System.exit(1);
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.exit(1);
-            }
-        } else {
-            throw new FileNotFoundException();
-        }
-    }
-
-    public PublicKey getPublicKey() {
-        return publicKey;
-    }
-
-    public PrivateKey getPrivateKey() {
-        return privateKey;
-    }
-
-    public boolean exists() {
-        return (publicKeyFile.exists() || privateKeyFile.exists());
-    }
-
-    // private helper methods
-    private void writePublicKey(PublicKey key) {
-        ObjectOutputStream oos;
-
-        try {
-            oos = new ObjectOutputStream(new FileOutputStream(this.privateKeyFile));
-            oos.writeObject(key);
-            oos.flush();
-            oos.close();
-        } catch (FileNotFoundException e) { // impossible
-            e.printStackTrace();
-            System.exit(1);
-        } catch (IOException e) { //impossible
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
-
-    private void writePrivateKey(PrivateKey key) {
-        Crypto c = new Crypto(this.passwd);
-        byte[] encrypted = c.encryptKey(key);
-        FileOutputStream output;
-
-        try {
-            output = new FileOutputStream(this.privateKeyFile);
-            output.write(encrypted);
-            output.flush();
-            output.close();
+            bais.read(this.iv);
+            bais.read(kBytes);
+            bais.read(lBytes);
         } catch (IOException e) {
             e.printStackTrace();
-            System.exit(1);
         }
+        this.generatePbKey();
+        this.aesKey = Crypto.keyUnwrap(this.pbKey, this.iv, kBytes, "AES");
+        this.hmacKey = Crypto.keyUnwrap(this.pbKey, this.iv, lBytes, "HMAC");
+    }
+
+    public KeyManager(PrivateKey privKey, byte[] header) {
+        this();
+        this.iv = new byte[IV_LENGTH];
+        byte[] aesKeyBytes = new byte[RSA_WRAPPED_AES_LENGTH];
+
+        ByteArrayInputStream bais = new ByteArrayInputStream(header);
+
+        try {
+            bais.read(this.iv);
+            bais.read(aesKeyBytes);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        this.aesKey = Crypto.keyUnwrap(privKey, aesKeyBytes, "AES");
+    }
+
+    public void generateRSAKeys() {
+        KeyPairGenerator keygen;
+        KeyPair kp = null;
+        try {
+            keygen = KeyPairGenerator.getInstance("RSA");
+            keygen.initialize(2048, this.rand);
+            kp = keygen.generateKeyPair();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+
+        if (kp != null) {
+            this.publicKey = kp.getPublic();
+            this.privateKey = kp.getPrivate();
+        }
+    }
+
+    public PublicKey getPublic() {
+        return this.publicKey;
+    }
+
+    public PrivateKey getPrivate() {
+        return this.privateKey;
+    }
+
+    public Key getPbKey() {
+        return this.pbKey;
+    }
+
+    public Key getAesKey() {
+        return this.aesKey;
+    }
+
+    public Key getHmacKey() {
+        return this.hmacKey;
+    }
+
+    public byte[] getIV() {
+        return this.iv;
+    }
+
+    public byte[] getHeader() {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            baos.write(this.iv);
+            baos.write(Crypto.keyWrap(this.pbKey, this.iv, this.aesKey));
+            baos.write(Crypto.keyWrap(this.pbKey, this.iv, this.hmacKey));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return baos.toByteArray();
+    }
+
+    public byte[] getHeader(PublicKey pubKey) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            baos.write(this.iv);
+            baos.write(Crypto.keyWrap(pubKey, this.aesKey));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return baos.toByteArray();
+    }
+
+    private void generatePbKey() {
+        SecretKeyFactory factory;
+        KeySpec pwSpec;
+        try {
+            factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM);
+            pwSpec = new PBEKeySpec(this.password, this.iv, NUM_ITERATIONS, AES_KEY_LENGTH);
+            this.pbKey = new SecretKeySpec(factory.generateSecret(pwSpec).getEncoded(), "AES");
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (InvalidKeySpecException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void generateAesKey() {
+        KeyGenerator keyGen;
+        try {
+            keyGen = KeyGenerator.getInstance("AES");
+            keyGen.init(AES_KEY_LENGTH, this.rand);
+            this.aesKey = keyGen.generateKey();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void generateHmacKey() {
+        KeyGenerator keyGen;
+        try {
+            keyGen = KeyGenerator.getInstance("HmacSHA256");
+            keyGen.init(HMAC_KEY_LENGTH, this.rand);
+            this.hmacKey = keyGen.generateKey();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void generateIV() {
+        this.iv = new byte[IV_LENGTH];
+        this.rand.nextBytes(iv);
     }
 }

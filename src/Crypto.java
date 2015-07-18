@@ -1,148 +1,50 @@
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.security.Key;
+import java.security.PublicKey;
+import java.security.PrivateKey;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
-import java.security.Key;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.SecureRandom;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.KeySpec;
 import java.util.Arrays;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKeyFactory;
+import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.spec.SecretKeySpec;
 
 public class Crypto {
-    private static final int SALT_LENGTH = 16;
-    private static final int IV_LENGTH = 16;
-    private static final String CHECKSUM = "SUCCESS";
-    private static final int CHECKSUM_LENGTH = CHECKSUM.getBytes().length;
-    private static final int KEY_LENGTH = 128; //Java does not support 192 or 256 bit AES keys
-    private static final int NUM_ITERATIONS = 32768; // (0.5)*(2^16)
-    private static final String ALGORITHM = "AES/CTR/PKCS5Padding";
+    private static final String AES_ALGORITHM = "AES/CBC/PKCS5Padding";
+    private static final String HMAC_ALGORITHM = "HmacSHA256";
+    private static final String RSA_ALGORITHM = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
+    private static final String SIGNATURE_ALGORITHM = "SHA256withRSA";
+    private static final String SECURE_RANDOM_ALGORITHM = "NativePRNGNonBlocking";
+    private static final int SIGNATURE_LENGTH = 256;
 
-    private Cipher c;
-    private char[] password;
-    private byte[] salt;
-    private Key aesKey;
 
-    public Crypto(char[] passwd) {
-        this.password = passwd;
+    public static byte[] aesEncrypt(Key aesKey, byte[] iv, byte[] bytesToEncrypt) {
+        Cipher c;
+        IvParameterSpec ivSpec;
+        byte[] encryptedBytes = null;
         try {
-            c = Cipher.getInstance(ALGORITHM);
+            c = Cipher.getInstance(AES_ALGORITHM);
+            ivSpec = new IvParameterSpec(iv);
+            c.init(Cipher.ENCRYPT_MODE, aesKey, ivSpec);
+            encryptedBytes = c.doFinal(bytesToEncrypt);
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         } catch (NoSuchPaddingException e) {
             e.printStackTrace();
-        }
-    }
-
-    private void encryptInit() {
-        this.salt = this.generateSalt();
-        this.aesKey = this.generateKey();
-        try {
-            c.init(Cipher.ENCRYPT_MODE, this.aesKey);
-        } catch (InvalidKeyException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void decryptInit(byte[] salt, IvParameterSpec ivSpec) {
-        this.salt = salt;
-        this.aesKey = this.generateKey();
-        try {
-            c.init(Cipher.DECRYPT_MODE, this.aesKey, ivSpec);
         } catch (InvalidKeyException e) {
             e.printStackTrace();
         } catch (InvalidAlgorithmParameterException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public byte[] encryptKey(PrivateKey key) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        byte[] output = null;
-        this.encryptInit();
-
-        try {
-            baos.write(this.salt);
-            baos.write(c.getIV());
-            byte[] checksumBytes = c.doFinal(CHECKSUM.getBytes());
-            System.out.println(checksumBytes.length);
-            baos.write(checksumBytes);
-            baos.write(c.doFinal(key.getEncoded()));
-            output = baos.toByteArray();
-            baos.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (BadPaddingException e) {
-            e.printStackTrace();
-        }
-        return output;
-    }
-
-    public byte[] decryptKey(byte[] encodedBytes) throws IncorrectPasswordException {
-        ByteArrayInputStream bais = new ByteArrayInputStream(encodedBytes);
-
-        byte[] salt = new byte[SALT_LENGTH];
-        byte[] iv = new byte[IV_LENGTH];
-        byte[] checksum = new byte[CHECKSUM_LENGTH];
-        byte[] encodedKey = null;
-        byte[] decryptedKey = null;
-
-        try {
-            bais.read(salt);
-            bais.read(iv);
-            bais.read(checksum);
-            encodedKey = new byte[bais.available()];
-            bais.read(encodedKey);
-        } catch (IOException e) { //should be impossible
-            e.printStackTrace();
-        }
-
-        IvParameterSpec ivSpec;
-
-        try {
-            ivSpec = new IvParameterSpec(iv);
-            this.decryptInit(salt, ivSpec);
-            c.doFinal(encodedKey);
-
-            if (Arrays.equals(c.doFinal(checksum), CHECKSUM.getBytes())) {
-                decryptedKey = c.doFinal(encodedKey);
-            } else {
-                throw new IncorrectPasswordException();
-            }
-        } catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (BadPaddingException e){
-            e.printStackTrace();
-        }
-
-        return decryptedKey;
-    }
-
-    public byte[] encryptBytes(byte[] unencryptedBytes) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        byte[] encryptedBytes = null;
-        this.encryptInit();
-
-        try {
-            baos.write(this.salt);
-            baos.write(c.getIV());
-            baos.write(c.doFinal(unencryptedBytes));
-            encryptedBytes = baos.toByteArray();
-            baos.close();
-        } catch (IOException e) {
             e.printStackTrace();
         } catch (IllegalBlockSizeException e) {
             e.printStackTrace();
@@ -152,33 +54,15 @@ public class Crypto {
         return encryptedBytes;
     }
 
-    public byte[] unencryptBytes(byte[] encryptedBytes) {
-        ByteArrayInputStream bais = new ByteArrayInputStream(encryptedBytes);
-
-        this.salt = new byte[SALT_LENGTH];
-        byte[] iv = new byte[IV_LENGTH];
-        byte[] encrypted = null;
-        byte[] decrypted = null;
-
-        try {
-            bais.read(this.salt);
-            bais.read(iv);
-            encrypted = new byte[bais.available()];
-            bais.read(encrypted);
-            bais.close();
-        } catch (IOException e) { //should be impossible
-            e.printStackTrace();
-        }
-
+    public static byte[] aesDecrypt(Key aesKey, byte[] iv, byte[] bytesToDecrypt) {
         Cipher c;
         IvParameterSpec ivSpec;
-        this.aesKey = this.generateKey();
-
+        byte[] decryptedBytes = null;
         try {
-            c = Cipher.getInstance(ALGORITHM);
+            c = Cipher.getInstance(AES_ALGORITHM);
             ivSpec = new IvParameterSpec(iv);
-            c.init(Cipher.DECRYPT_MODE, this.aesKey, ivSpec);
-            decrypted = c.doFinal(encrypted);
+            c.init(Cipher.DECRYPT_MODE, aesKey, ivSpec);
+            decryptedBytes = c.doFinal(bytesToDecrypt);
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         } catch (NoSuchPaddingException e) {
@@ -189,43 +73,159 @@ public class Crypto {
             e.printStackTrace();
         } catch (IllegalBlockSizeException e) {
             e.printStackTrace();
-        } catch (BadPaddingException e){
+        } catch (BadPaddingException e) {
             e.printStackTrace();
         }
-
-        return decrypted;
+        return decryptedBytes;
     }
 
-    private Key generateKey() {
-        SecretKeyFactory factory;
-        Key key = null;
-        KeySpec pwSpec;
+    public static byte[] keyWrap(Key pbKey, byte[] iv, Key keyToWrap) {
+        Cipher c;
+        IvParameterSpec ivSpec;
+        byte[] wrappedKey = null;
         try {
-            factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-            pwSpec = new PBEKeySpec(this.password, this.salt, NUM_ITERATIONS, KEY_LENGTH);
-            key = new SecretKeySpec(factory.generateSecret(pwSpec).getEncoded(), "AES");
+            c = Cipher.getInstance(AES_ALGORITHM);
+            ivSpec = new IvParameterSpec(iv);
+            c.init(Cipher.WRAP_MODE, pbKey, ivSpec);
+            wrappedKey = c.wrap(keyToWrap);
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
-        } catch (InvalidKeySpecException e) {
+        } catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        } catch (InvalidAlgorithmParameterException e) {
+            e.printStackTrace();
+        } catch (IllegalBlockSizeException e) {
             e.printStackTrace();
         }
-
-        return key;
+        return wrappedKey;
     }
 
-    private byte[] generateSalt() {
-        SecureRandom rand = null;
-        byte[] salt = new byte[SALT_LENGTH];
-
+    public static byte[] keyWrap(PublicKey pub, Key keyToWrap) {
+        Cipher c;
+        byte[] wrappedKey = null;
         try {
-            rand = SecureRandom.getInstance("NativePRNGNonBlocking"); // if available, use /dev/urandom
+            c = Cipher.getInstance(RSA_ALGORITHM);
+            c.init(Cipher.WRAP_MODE, pub);
+            wrappedKey = c.wrap(keyToWrap);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        } catch (IllegalBlockSizeException e) {
+            e.printStackTrace();
+        }
+        return wrappedKey;
+    }
+
+    public static Key keyUnwrap(Key pbKey, byte[] iv, byte[] wrappedKey, String algorithm) {
+        Cipher c;
+        IvParameterSpec ivSpec;
+        Key unwrappedKey = null;
+        try {
+            c = Cipher.getInstance(AES_ALGORITHM);
+            ivSpec = new IvParameterSpec(iv);
+            c.init(Cipher.UNWRAP_MODE, pbKey, ivSpec);
+            unwrappedKey = c.unwrap(wrappedKey, algorithm, Cipher.SECRET_KEY);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        } catch (InvalidAlgorithmParameterException e) {
+            e.printStackTrace();
+        }
+        return unwrappedKey;
+    }
+
+    public static Key keyUnwrap(PrivateKey priv, byte[] wrappedKey, String algorithm) {
+        Cipher c;
+        IvParameterSpec ivSpec;
+        Key unwrappedKey = null;
+        try {
+            c = Cipher.getInstance(RSA_ALGORITHM);
+            c.init(Cipher.UNWRAP_MODE, priv);
+            unwrappedKey = c.unwrap(wrappedKey, algorithm, Cipher.SECRET_KEY);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        }
+        return unwrappedKey;
+    }
+
+    public static byte[] getHmac(Key hmacKey, byte[] body) {
+        Mac m;
+        byte[] hmacOutput = null;
+        try {
+            m = Mac.getInstance(HMAC_ALGORITHM);
+            m.init(hmacKey);
+            hmacOutput = m.doFinal(body);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        }
+        return hmacOutput;
+    }
+
+    public static boolean verifyHmac(Key hmacKey, byte[] hmac, byte[] body) {
+        byte[] confirm = getHmac(hmacKey, body);
+        return Arrays.equals(hmac, confirm);
+    }
+
+    public static byte[] sign (PrivateKey privKey, byte[] body) {
+        SecureRandom rand;
+        try {
+            rand = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM); // if available, use /dev/urandom
         } catch (NoSuchAlgorithmException e) {
             rand = new SecureRandom(); // else use default
         }
-        if (rand != null) {
-            rand.nextBytes(salt);
+        Signature s;
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try{
+            s = Signature.getInstance(SIGNATURE_ALGORITHM);
+            s.initSign(privKey, rand);
+            s.update(body);
+            baos.write(s.sign());
+            baos.write(body);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        } catch (SignatureException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+        return baos.toByteArray();
+    }
 
-        return salt;
+    public static boolean verify (PublicKey pubKey, byte[] signedBytes) {
+        Signature s;
+        boolean verified = false;
+        byte[] signature;
+        byte[] data;
+        try {
+            signature = Arrays.copyOfRange(signedBytes, 0, SIGNATURE_LENGTH);
+            data = Arrays.copyOfRange(signedBytes, SIGNATURE_LENGTH, signedBytes.length);
+            s = Signature.getInstance(SIGNATURE_ALGORITHM);
+            s.initVerify(pubKey);
+            s.update(data);
+            verified = s.verify(signature);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        } catch (SignatureException e) {
+            e.printStackTrace();
+        }
+        return verified;
     }
 }
