@@ -28,11 +28,11 @@ public class Crypto {
     private static final String SECURE_RANDOM_ALGORITHM = "NativePRNGNonBlocking";
     private static final int SIGNATURE_LENGTH = 256;
 
-
     public static byte[] aesEncrypt(Key aesKey, byte[] iv, byte[] bytesToEncrypt) {
         Cipher c;
         IvParameterSpec ivSpec;
         byte[] encryptedBytes = null;
+
         try {
             c = Cipher.getInstance(AES_ALGORITHM);
             ivSpec = new IvParameterSpec(iv);
@@ -51,6 +51,7 @@ public class Crypto {
         } catch (BadPaddingException e) {
             e.printStackTrace();
         }
+
         return encryptedBytes;
     }
 
@@ -58,6 +59,7 @@ public class Crypto {
         Cipher c;
         IvParameterSpec ivSpec;
         byte[] decryptedBytes = null;
+
         try {
             c = Cipher.getInstance(AES_ALGORITHM);
             ivSpec = new IvParameterSpec(iv);
@@ -76,6 +78,7 @@ public class Crypto {
         } catch (BadPaddingException e) {
             e.printStackTrace();
         }
+
         return decryptedBytes;
     }
 
@@ -83,6 +86,7 @@ public class Crypto {
         Cipher c;
         IvParameterSpec ivSpec;
         byte[] wrappedKey = null;
+
         try {
             c = Cipher.getInstance(AES_ALGORITHM);
             ivSpec = new IvParameterSpec(iv);
@@ -99,12 +103,14 @@ public class Crypto {
         } catch (IllegalBlockSizeException e) {
             e.printStackTrace();
         }
+
         return wrappedKey;
     }
 
     public static byte[] keyWrap(PublicKey pub, Key keyToWrap) {
         Cipher c;
         byte[] wrappedKey = null;
+
         try {
             c = Cipher.getInstance(RSA_ALGORITHM);
             c.init(Cipher.WRAP_MODE, pub);
@@ -118,6 +124,7 @@ public class Crypto {
         } catch (IllegalBlockSizeException e) {
             e.printStackTrace();
         }
+
         return wrappedKey;
     }
 
@@ -125,6 +132,7 @@ public class Crypto {
         Cipher c;
         IvParameterSpec ivSpec;
         Key unwrappedKey = null;
+
         try {
             c = Cipher.getInstance(AES_ALGORITHM);
             ivSpec = new IvParameterSpec(iv);
@@ -139,6 +147,7 @@ public class Crypto {
         } catch (InvalidAlgorithmParameterException e) {
             e.printStackTrace();
         }
+
         return unwrappedKey;
     }
 
@@ -146,6 +155,7 @@ public class Crypto {
         Cipher c;
         IvParameterSpec ivSpec;
         Key unwrappedKey = null;
+
         try {
             c = Cipher.getInstance(RSA_ALGORITHM);
             c.init(Cipher.UNWRAP_MODE, priv);
@@ -157,12 +167,14 @@ public class Crypto {
         } catch (InvalidKeyException e) {
             e.printStackTrace();
         }
+
         return unwrappedKey;
     }
 
     public static byte[] getHmac(Key hmacKey, byte[] body) {
         Mac m;
         byte[] hmacOutput = null;
+
         try {
             m = Mac.getInstance(HMAC_ALGORITHM);
             m.init(hmacKey);
@@ -172,23 +184,28 @@ public class Crypto {
         } catch (InvalidKeyException e) {
             e.printStackTrace();
         }
+
         return hmacOutput;
     }
 
     public static boolean verifyHmac(Key hmacKey, byte[] hmac, byte[] body) {
         byte[] confirm = getHmac(hmacKey, body);
+
         return Arrays.equals(hmac, confirm);
     }
 
     public static byte[] sign (PrivateKey privKey, byte[] body) {
         SecureRandom rand;
+
         try {
             rand = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM); // if available, use /dev/urandom
         } catch (NoSuchAlgorithmException e) {
             rand = new SecureRandom(); // else use default
         }
+
         Signature s;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
         try{
             s = Signature.getInstance(SIGNATURE_ALGORITHM);
             s.initSign(privKey, rand);
@@ -204,6 +221,7 @@ public class Crypto {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
         return baos.toByteArray();
     }
 
@@ -212,6 +230,7 @@ public class Crypto {
         boolean verified = false;
         byte[] signature;
         byte[] data;
+
         try {
             signature = Arrays.copyOfRange(signedBytes, 0, SIGNATURE_LENGTH);
             data = Arrays.copyOfRange(signedBytes, SIGNATURE_LENGTH, signedBytes.length);
@@ -226,6 +245,7 @@ public class Crypto {
         } catch (SignatureException e) {
             e.printStackTrace();
         }
+
         return verified;
     }
 }

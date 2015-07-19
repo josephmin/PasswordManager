@@ -67,7 +67,7 @@ public class PasswordDatabase implements Serializable {
         return entry;
     }
 
-    public void replaceEntry(String alias, String[] newEntry) throws EntryDoesNotExistException {
+    public void modifyEntry(String alias, String[] newEntry) throws EntryDoesNotExistException {
         if (hm.containsKey(alias)) {
             hm.replace(alias, newEntry);
         } else {
