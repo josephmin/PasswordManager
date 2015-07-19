@@ -3,6 +3,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.lang.IllegalArgumentException;
+import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -57,7 +58,7 @@ public class KeyManager {
         this.generateHmacKey();
     }
 
-    public KeyManager(char[] password, byte[] header) {
+    public KeyManager(char[] password, byte[] header) throws IncorrectPasswordException {
         this();
         this.password = password;
         this.iv = new byte[IV_LENGTH];
@@ -77,7 +78,7 @@ public class KeyManager {
         this.hmacKey = Crypto.keyUnwrap(this.pbKey, this.iv, lBytes, "HMAC");
     }
 
-    public KeyManager(PrivateKey privKey, byte[] header) {
+    public KeyManager(PrivateKey privKey, byte[] header) throws InvalidKeyException {
         this();
         this.iv = new byte[IV_LENGTH];
         byte[] aesKeyBytes = new byte[RSA_WRAPPED_AES_LENGTH];

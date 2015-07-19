@@ -78,6 +78,7 @@ public class PasswordManager {
             fis.read(header);
             fis.read(hmac);
             dbBytes = new byte[fis.available()];
+            fis.read(dbBytes);
         } catch (FileNotFoundException e) {
             System.err.println("That password database does not exist. Exiting.");
             System.exit(1);
@@ -85,11 +86,16 @@ public class PasswordManager {
             e.printStackTrace();
         }
 
-        System.out.println("Loading " + FILE_DIR.getPath() + "/" + this.dbName + ".db");
+        System.out.println("Loading '" + FILE_DIR.getPath() + "/" + this.dbName + ".db'");
         System.out.print("Password: ");
         char[] password = this.cons.readPassword();
 
-        km = new KeyManager(password, header);
+        try {
+            km = new KeyManager(password, header);
+        } catch (IncorrectPasswordException e) {
+            System.err.println("Error1: Incorrect password or corrupt database. Exiting.");
+            System.exit(1);
+        }
 
         if (Crypto.verifyHmac(km.getHmacKey(), hmac, dbBytes)) {
             pd = new PasswordDatabase(Crypto.aesDecrypt(km.getAesKey(), km.getIV(), dbBytes));
@@ -98,6 +104,7 @@ public class PasswordManager {
             System.err.println("Error: Incorrect password or corrupt database. Exiting.");
             System.exit(1);
         }
+        System.out.println();
     }
 
     public void keygen() {
@@ -144,52 +151,59 @@ public class PasswordManager {
                 "2. View an entry\n" +
                 "3. Add a new entry\n" +
                 "4. Modify an entry\n" +
-                "5. Save and exit\n" +
-                "6. Exit\n");
+                "5. Delete an entry\n" +
+                "6. Change password\n" +
+                "7. Save and exit\n" +
+                "8. Exit\n");
             System.out.print("Your choice (1-6): ");
             int choice = scan.nextInt();
             scan.nextLine(); // eat new line
 
             switch (choice) {
-                case 1: this.listEntries(); break;
-                case 2: this.getEntry(); break;
-                case 3: this.addEntry(); break;
+                case 1: this.list(); break;
+                case 2: this.get(); break;
+                case 3: this.add(); break;
                 case 4: this.modify(); break;
-                case 5: this.save();
-                case 6: this.exit(); break;
+                case 5: this.delete(); break;
+                //case 6: this.changePassword();
+                case 7: this.save();
+                case 8: this.exit(); break;
                 default: System.out.println("Invalid choice.\n");
             }
+
+            System.out.print("Press Enter to continue ");
+            scan.nextLine();
+            System.out.println();
         }
     }
 
-    private void listEntries() {
+    private void list() {
         String[] aliases = pd.getAliases();
 
         if (aliases.length == 0) {
             System.out.println("There are currently no entries.\n");
         } else {
-            int i = 0;
+            int i = 1;
             for (String s : aliases) {
                 System.out.println((i++) + ". " + s);
             }
 
-            System.out.print("Enter entry number to view (0-" + (i-1)  + "): ");
+            System.out.print("\nEnter entry number to view (0 to go back to the menu): ");
             int choice = scan.nextInt();
             scan.nextLine();
-
-            this.getEntry(aliases[choice]);
+            if (choice > 0) {
+                this.get(aliases[choice - 1]);
+            }
         }
-
-        this.menu();
     }
 
-    private void getEntry() {
+    private void get() {
         System.out.print("Enter alias of entry to view: ");
         String alias = scan.nextLine();
-        this.getEntry(alias);
+        this.get(alias);
     }
 
-    private void getEntry(String alias) {
+    private void get(String alias) {
         String[] entry;
 
         try {
@@ -203,7 +217,7 @@ public class PasswordManager {
         }
     }
 
-    private void addEntry() {
+    private void add() {
         String alias = null;
         String[] entry = new String[3];
 
@@ -220,6 +234,7 @@ public class PasswordManager {
 
             pd.addEntry(alias, entry);
             modified = true;
+            System.out.println("Entry has been successfully added.");
         } catch (EntryAlreadyExistsException e) {
             System.out.println("An entry for '" + alias + "' already exists.\n");
         } catch (InvalidEntryException e) {
@@ -233,6 +248,7 @@ public class PasswordManager {
         String in;
         System.out.print("Enter alias to modify: ");
         alias = scan.nextLine();
+
         try{
             entry = pd.getEntry(alias);
             System.out.print("New username (" + entry[0] + "): ");
@@ -252,6 +268,21 @@ public class PasswordManager {
             }
             pd.modifyEntry(alias, entry);
             modified = true;
+            System.out.println();
+        } catch (EntryDoesNotExistException e) {
+            System.out.println("An entry for '" + alias + "' does not exist.\n");
+        }
+    }
+
+    private void delete() {
+        String alias = null;
+        System.out.print("Enter alias to delete: ");
+        alias = scan.nextLine();
+
+        try {
+            pd.removeEntry(alias);
+            System.out.println("'" + alias + "' has been deleted.\n");
+            modified = true;
         } catch (EntryDoesNotExistException e) {
             System.out.println("An entry for '" + alias + "' does not exist.\n");
         }
@@ -270,6 +301,7 @@ public class PasswordManager {
             fos.write(encryptedBytes);
             fos.flush();
             fos.close();
+            System.out.println("Database has been written to '" + FILE_DIR.getPath() + "/" + this.dbName + ".db'");
             modified = false;
         } catch (IOException e) {
             e.printStackTrace();

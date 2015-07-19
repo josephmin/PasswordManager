@@ -128,7 +128,8 @@ public class Crypto {
         return wrappedKey;
     }
 
-    public static Key keyUnwrap(Key pbKey, byte[] iv, byte[] wrappedKey, String algorithm) {
+    public static Key keyUnwrap(Key pbKey, byte[] iv, byte[] wrappedKey, String algorithm)
+        throws IncorrectPasswordException {
         Cipher c;
         IvParameterSpec ivSpec;
         Key unwrappedKey = null;
@@ -143,7 +144,7 @@ public class Crypto {
         } catch (NoSuchPaddingException e) {
             e.printStackTrace();
         } catch (InvalidKeyException e) {
-            e.printStackTrace();
+            throw new IncorrectPasswordException();
         } catch (InvalidAlgorithmParameterException e) {
             e.printStackTrace();
         }
@@ -151,7 +152,8 @@ public class Crypto {
         return unwrappedKey;
     }
 
-    public static Key keyUnwrap(PrivateKey priv, byte[] wrappedKey, String algorithm) {
+    public static Key keyUnwrap(PrivateKey priv, byte[] wrappedKey, String algorithm)
+        throws InvalidKeyException {
         Cipher c;
         IvParameterSpec ivSpec;
         Key unwrappedKey = null;
@@ -163,8 +165,6 @@ public class Crypto {
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         } catch (NoSuchPaddingException e) {
-            e.printStackTrace();
-        } catch (InvalidKeyException e) {
             e.printStackTrace();
         }
 
@@ -190,7 +190,6 @@ public class Crypto {
 
     public static boolean verifyHmac(Key hmacKey, byte[] hmac, byte[] body) {
         byte[] confirm = getHmac(hmacKey, body);
-
         return Arrays.equals(hmac, confirm);
     }
 
