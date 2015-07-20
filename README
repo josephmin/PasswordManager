@@ -1,0 +1,8 @@
+A Provably Secure Java Password Manager
+
+Tested on Java 8
+
+compile: javac -d bin/ -g src/*.java
+run: java -cp bin/ JavaPM [arguments]
+
+use 'help' argument for list of arguments
