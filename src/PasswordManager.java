@@ -340,6 +340,7 @@ public class PasswordManager {
 
                     this.km = new KeyManager(privateKey, header);
                     this.pd = new PasswordDatabase(Crypto.aesDecrypt(this.km.getAesKey(), this.km.getIV(), dbBytes));
+                    System.out.println("The database has been successfully verified and loaded.\n");
                     this.menu();
                 } catch (IOException e) {
                     e.printStackTrace();

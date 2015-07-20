@@ -166,6 +166,9 @@ public class Crypto {
             e.printStackTrace();
         } catch (NoSuchPaddingException e) {
             e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            System.err.println("Invalid key. Exiting.");
+            System.exit(1);
         }
 
         return unwrappedKey;
