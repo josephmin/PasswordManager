@@ -6,7 +6,10 @@ public class JavaPM {
                 case "help": PasswordManager.help(); break;
                 case "init": pm.init(); break;
                 case "keygen": pm.keygen(); break;
-                default: pm.load(args[0]);
+                case "load": pm.load();break;
+                case "sign": pm.sign(); break;
+                case "verify": pm.verify(); break;
+                default: System.out.println("Invalid argument.");
             }
         } else {
             System.err.println("JavaPM takes only a single argument. Use 'help' to see available arguments.\n");

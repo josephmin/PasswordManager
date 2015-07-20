@@ -1,8 +1,11 @@
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.IllegalArgumentException;
+import java.io.ObjectInputStream;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyPair;
@@ -92,7 +95,9 @@ public class KeyManager {
             e.printStackTrace();
         }
 
-        this.aesKey = Crypto.keyUnwrap(privKey, aesKeyBytes, "AES");
+        this.privateKey = privKey;
+        this.aesKey = Crypto.keyUnwrap(this.privateKey, aesKeyBytes, "AES");
+        this.hmacKey = null;
     }
 
     public void generateRSAKeys() {
@@ -112,8 +117,62 @@ public class KeyManager {
         }
     }
 
+    public static PublicKey readPublic(File publicKeyFile) {
+        ObjectInputStream ois;
+        Object o = null;
+        PublicKey publicKey = null;
+        try {
+            ois = new ObjectInputStream(new FileInputStream(publicKeyFile));
+            o = ois.readObject();
+            ois.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        if (o instanceof PublicKey) {
+            publicKey = (PublicKey) o;
+        }
+
+        return publicKey;
+    }
+
+    public static PrivateKey readPrivate(File privateKeyFile) {
+        ObjectInputStream ois;
+        Object o = null;
+        PrivateKey privateKey = null;
+        try {
+            ois = new ObjectInputStream(new FileInputStream(privateKeyFile));
+            o = ois.readObject();
+            ois.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        if (o instanceof PrivateKey) {
+            privateKey = (PrivateKey) o;
+        }
+
+        return privateKey;
+    }
+
+    public void setPublic(PublicKey pk) {
+        this.publicKey = pk;
+    }
+
     public PublicKey getPublic() {
         return this.publicKey;
+    }
+
+    public void setPrivate(PrivateKey pk) {
+        this.privateKey = pk;
     }
 
     public PrivateKey getPrivate() {

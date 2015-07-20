@@ -224,11 +224,12 @@ public class Crypto {
         return baos.toByteArray();
     }
 
-    public static boolean verify (PublicKey pubKey, byte[] signedBytes) {
+    public static byte[] verify (PublicKey pubKey, byte[] signedBytes) {
         Signature s;
         boolean verified = false;
         byte[] signature;
-        byte[] data;
+        byte[] data = null;
+        byte[] output = null;
 
         try {
             signature = Arrays.copyOfRange(signedBytes, 0, SIGNATURE_LENGTH);
@@ -245,6 +246,10 @@ public class Crypto {
             e.printStackTrace();
         }
 
-        return verified;
+        if (verified) {
+            output = data;
+        }
+
+        return output;
     }
 }

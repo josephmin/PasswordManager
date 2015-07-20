@@ -1,3 +1,4 @@
+import java.io.ByteArrayInputStream;
 import java.io.Console;
 import java.io.File;
 import java.io.FileInputStream;
@@ -5,6 +6,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.nio.ByteBuffer;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.InvalidKeyException;
 import java.util.Arrays;
 import java.util.Scanner;
 
@@ -12,13 +17,14 @@ public class PasswordManager {
     private static final File KEY_DIR = new File("keys");
     private static final File FILE_DIR = new File("files");
     private static final int HEADER_LENGTH = 96; //iv + aesKey + hmacKey
+    private static final int SIGN_HEADER_LENGTH = 16 + 256;
     private static final int HMAC_LENGTH = 32;
 
     private Scanner scan;
     private Console cons;
     private KeyManager km;
     private PasswordDatabase pd;
-    private String dbName;
+    private File dbFile;
     private boolean modified;
 
     public PasswordManager() {
@@ -34,14 +40,26 @@ public class PasswordManager {
     }
 
     public void init() {
-        System.out.print("Enter name to save database: ");
-        this.dbName = scan.nextLine();
+        String dbName = null;
+        boolean valid = false;
+        while (!valid) {
+            System.out.print("Enter name to save database: ");
+            dbName = scan.nextLine();
+            this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
+            if (this.dbFile.exists()) {
+                System.out.print("A database named '" + dbName + "' already exists.\nOverwrite (y/n)? ");
+                String overwrite = scan.nextLine();
+                if (overwrite.equalsIgnoreCase("y")) {
+                    valid = true;
+                }
+            }
+        }
         char[] password = this.createPassword();
         this.km = new KeyManager(password);
         this.pd = new PasswordDatabase();
         KEY_DIR.mkdir();
         FILE_DIR.mkdir();
-        System.out.println("New password database '" + this.dbName + "' has been created.\n");
+        System.out.println("New password database '" + dbName + "' has been created.\n");
 
         this.menu();
     }
@@ -54,27 +72,33 @@ public class PasswordManager {
         while(!valid) {
             System.out.print("Create a password: ");
             password = cons.readPassword();
-            System.out.print("Confirm password: ");
-            confirm = cons.readPassword();
-            if (Arrays.equals(password, confirm)) {
-                valid = true;
+            if (password.length < 16) {
+                System.out.println("Password should be at least 16 characters long.\n");
             } else {
-                System.out.println("Passwords do not match. Please try again.");
+                System.out.print("Confirm password: ");
+                confirm = cons.readPassword();
+                if (Arrays.equals(password, confirm)) {
+                    valid = true;
+                } else {
+                    System.out.println("Passwords do not match. Please try again.");
+                }
             }
         }
 
         return password;
     }
 
-    public void load(String fileName) {
-        this.dbName = fileName;
+    public void load() {
+        System.out.print("Enter name of database to load: ");
+        String dbName = scan.nextLine();
+        this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
         FileInputStream fis;
         byte[] header = new byte[HEADER_LENGTH];
         byte[] hmac = new byte[HMAC_LENGTH];
         byte[] dbBytes = null;
 
         try {
-            fis = new FileInputStream(FILE_DIR.getPath() + "/" + this.dbName + ".db");
+            fis = new FileInputStream(this.dbFile);
             fis.read(header);
             fis.read(hmac);
             dbBytes = new byte[fis.available()];
@@ -86,25 +110,25 @@ public class PasswordManager {
             e.printStackTrace();
         }
 
-        System.out.println("Loading '" + FILE_DIR.getPath() + "/" + this.dbName + ".db'");
+        System.out.println("Loading '" + this.dbFile.getPath() + "'");
         System.out.print("Password: ");
         char[] password = this.cons.readPassword();
 
         try {
             km = new KeyManager(password, header);
         } catch (IncorrectPasswordException e) {
-            System.err.println("Error1: Incorrect password or corrupt database. Exiting.");
+            System.err.println("Error: Incorrect password or corrupt database. Exiting.");
             System.exit(1);
         }
 
         if (Crypto.verifyHmac(km.getHmacKey(), hmac, dbBytes)) {
             pd = new PasswordDatabase(Crypto.aesDecrypt(km.getAesKey(), km.getIV(), dbBytes));
+            System.out.println();
             this.menu();
         } else {
             System.err.println("Error: Incorrect password or corrupt database. Exiting.");
             System.exit(1);
         }
-        System.out.println();
     }
 
     public void keygen() {
@@ -112,6 +136,16 @@ public class PasswordManager {
         System.out.print("Generating public/private RSA key pair.\n" +
             "Enter file in which to save the keys: ");
         String keyName = scan.nextLine();
+        File pubFile = new File(KEY_DIR.getPath() + "/" + keyName + ".pub");
+        File privFile = new File(KEY_DIR.getPath() + "/" + keyName + ".priv");
+
+        if (pubFile.exists() || privFile.exists()) {
+            System.out.print("An RSA key for '" + keyName + "' already exists. Overwrite (y/n)? ");
+            String overwrite = scan.nextLine();
+            if (overwrite.equalsIgnoreCase("n") || !overwrite.equalsIgnoreCase("y")) {
+                System.exit(0);
+            }
+        }
         ObjectOutputStream pubOutput;
         ObjectOutputStream privOutput;
 
@@ -122,9 +156,9 @@ public class PasswordManager {
 
         try {
             pubOutput = new ObjectOutputStream(
-            new FileOutputStream(KEY_DIR.getPath() + "/" + keyName + ".pub"));
+            new FileOutputStream(pubFile));
             privOutput = new ObjectOutputStream(
-            new FileOutputStream(KEY_DIR.getPath() + "/" + keyName + ".priv"));
+            new FileOutputStream(privFile));
             pubOutput.writeObject(km.getPublic());
             pubOutput.flush();
             pubOutput.close();
@@ -135,16 +169,196 @@ public class PasswordManager {
             e.printStackTrace();
         }
 
-        System.out.println("Public key written to '" + KEY_DIR.getPath() + "/" + keyName + ".pub'");
-        System.out.println("Private key written to '" + KEY_DIR.getPath() + "/" + keyName + ".priv'\n");
+        System.out.println("\nPublic key written to '" + pubFile.getPath() + "'");
+        System.out.println("Private key written to '" + privFile.getPath() + "'\n");
+        System.exit(0);
+    }
 
-        // go to menu
-        this.menu();
+    public void sign() {
+        String dbName = null;
+        boolean exist = false;
+        while (!exist) {
+            System.out.print("Enter database to sign: ");
+            dbName = scan.nextLine();
+            this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
+            if (this.dbFile.exists()) {
+                exist = true;
+            } else {
+                System.out.println("'" + dbName + "' does not exist. Please confirm the name and try again.\n");
+            }
+        }
+
+        System.out.print("Password: ");
+        char[] password = cons.readPassword();
+
+        FileInputStream fis;
+        byte[] header = new byte[HEADER_LENGTH];
+        byte[] hmac = new byte[HMAC_LENGTH];
+        byte[] dbBytes = null;
+
+        try {
+            fis = new FileInputStream(this.dbFile);
+            fis.read(header);
+            fis.read(hmac);
+            dbBytes = new byte[fis.available()];
+            fis.read(dbBytes);
+            this.km = new KeyManager(password, header);
+            if (Crypto.verifyHmac(this.km.getHmacKey(), hmac, dbBytes)) {
+                this.pd = new PasswordDatabase(Crypto.aesDecrypt(this.km.getAesKey(), this.km.getIV(), dbBytes));
+            } else {
+                throw new IncorrectPasswordException();
+            }
+        } catch (IncorrectPasswordException e) {
+            System.err.println("Error: Incorrect password or corrupt database. Exiting.");
+            System.exit(1);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        File privateKeyFile;
+        boolean valid = false;
+        while (!valid) {
+            System.out.print("Enter path to your private key: ");
+            privateKeyFile = new File(scan.nextLine());
+            if (privateKeyFile.exists()) {
+                this.km.setPrivate(KeyManager.readPrivate(privateKeyFile));
+                if (km.getPrivate() != null) {
+                    valid = true;
+                } else {
+                    System.out.println("'" + privateKeyFile.getPath() + "' is not a valid RSA private key.\n");
+                }
+            } else {
+                System.out.println("'" + privateKeyFile.getPath() + "' does not exist. Check the path and try again.\n");
+            }
+        }
+
+        File publicKeyFile;
+        valid = false;
+        while (!valid) {
+            System.out.print("Enter path to recepient's public key: ");
+            publicKeyFile = new File(scan.nextLine());
+            if (publicKeyFile.exists()) {
+                this.km.setPublic(KeyManager.readPublic(publicKeyFile));
+                if (km.getPublic() != null) {
+                    valid = true;
+                } else {
+                    System.out.println("'" + publicKeyFile.getPath() + "' is not a valid RSA public key.\n");
+                }
+            } else {
+                System.out.println("'" + publicKeyFile.getPath() + "' does not exist. Check the path and try again.\n");
+            }
+        }
+
+        byte[] signedHeader = km.getHeader(km.getPublic());
+        byte[] encryptedBytes = Crypto.aesEncrypt(km.getAesKey(), km.getIV(), pd.getBytes());
+
+        ByteBuffer bb = ByteBuffer.allocate(signedHeader.length + encryptedBytes.length);
+        bb.put(signedHeader);
+        bb.put(encryptedBytes);
+        byte[] signature = Crypto.sign(km.getPrivate(), bb.array());
+        FileOutputStream fos;
+        try {
+            fos = new FileOutputStream(FILE_DIR.getPath() + "/" + dbName + ".signed");
+            fos.write(signature);
+            fos.flush();
+            fos.close();
+            System.out.println("Signed database has been written to '" + FILE_DIR.getPath() + "/" + dbName + ".signed'");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void verify() {
+        boolean exist = false;
+        String dbName;
+        File dbFile = null;
+        while (!exist) {
+            System.out.print("Enter name of signed database: ");
+            dbName = scan.nextLine();
+            dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".signed");
+            if (dbFile.exists()) {
+                exist = true;
+            } else {
+                System.out.println("'" + dbFile.getPath() + "' does not exist. Check path and try again.\n");
+            }
+        }
+
+        File privateKeyFile;
+        PrivateKey privateKey = null;
+        boolean valid = false;
+        while (!valid) {
+            System.out.print("Enter path to your private key: ");
+            privateKeyFile = new File(scan.nextLine());
+            if (privateKeyFile.exists()) {
+                privateKey = KeyManager.readPrivate(privateKeyFile);
+                if (privateKey != null) {
+                    valid = true;
+                } else {
+                    System.out.println("'" + privateKeyFile.getPath() + "' is not a valid RSA private key.\n");
+                }
+            } else {
+                System.out.println("'" + privateKeyFile.getPath() + "' does not exist. Check the path and try again.\n");
+            }
+        }
+
+        File publicKeyFile;
+        PublicKey publicKey = null;
+        valid = false;
+        while (!valid) {
+            System.out.print("Enter path to sender's public key: ");
+            publicKeyFile = new File(scan.nextLine());
+            if (publicKeyFile.exists()) {
+                publicKey = KeyManager.readPublic(publicKeyFile);
+                if (publicKey != null) {
+                    valid = true;
+                } else {
+                    System.out.println("'" + publicKeyFile.getPath() + "' is not a valid RSA public key.\n");
+                }
+            } else {
+                System.out.println("'" + publicKeyFile.getPath() + "' does not exist. Check the path and try again.\n");
+            }
+        }
+
+        FileInputStream fis;
+        byte[] fileBytes = null;
+        try {
+            fis = new FileInputStream(dbFile);
+            fileBytes = new byte[fis.available()];
+            fis.read(fileBytes);
+
+            byte[] data = Crypto.verify(publicKey, fileBytes);
+            byte[] header = new byte[SIGN_HEADER_LENGTH];
+            byte[] dbBytes;
+            if (data != null) {
+                try {
+                    ByteArrayInputStream bais = new ByteArrayInputStream(data);
+                    bais.read(header);
+                    dbBytes = new byte[bais.available()];
+                    bais.read(dbBytes);
+
+                    this.km = new KeyManager(privateKey, header);
+                    this.pd = new PasswordDatabase(Crypto.aesDecrypt(this.km.getAesKey(), this.km.getIV(), dbBytes));
+                    this.menu();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (InvalidKeyException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                System.out.println("The signed database cannot be verified. Exiting.");
+                System.exit(1);
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void menu() {
         boolean done = false;
-
         while(!done) {
             System.out.println("What would you like to do?\n" +
                 "1. List entries\n" +
@@ -155,7 +369,7 @@ public class PasswordManager {
                 "6. Change password\n" +
                 "7. Save and exit\n" +
                 "8. Exit\n");
-            System.out.print("Your choice (1-6): ");
+            System.out.print("Your choice (1-8): ");
             int choice = scan.nextInt();
             scan.nextLine(); // eat new line
 
@@ -165,7 +379,7 @@ public class PasswordManager {
                 case 3: this.add(); break;
                 case 4: this.modify(); break;
                 case 5: this.delete(); break;
-                //case 6: this.changePassword();
+                case 6: this.changePassword(); break;
                 case 7: this.save();
                 case 8: this.exit(); break;
                 default: System.out.println("Invalid choice.\n");
@@ -191,7 +405,7 @@ public class PasswordManager {
             System.out.print("\nEnter entry number to view (0 to go back to the menu): ");
             int choice = scan.nextInt();
             scan.nextLine();
-            if (choice > 0) {
+            if (choice > 0 && choice < i) {
                 this.get(aliases[choice - 1]);
             }
         }
@@ -288,20 +502,38 @@ public class PasswordManager {
         }
     }
 
+    private void changePassword() {
+        System.out.println("Creating a new password.");
+        char[] pwd = this.createPassword();
+        km = new KeyManager(pwd);
+
+        System.out.println("\nPassword has been successfully changed.\n");
+        modified = true;
+    }
+
     private void save() {
+        if (km.getHmacKey() == null) {
+            System.out.println("This database does not have a password. Create a password now.\n");
+            char[] pwd = this.createPassword();
+            km = new KeyManager(pwd);
+            System.out.print("Enter name to save this database: ");
+            String dbName = scan.nextLine();
+            this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
+        }
+
         byte[] header = km.getHeader();
         byte[] encryptedBytes = Crypto.aesEncrypt(km.getAesKey(), km.getIV(), pd.getBytes());
         byte[] hmac = Crypto.getHmac(km.getHmacKey(), encryptedBytes);
 
         FileOutputStream fos;
         try {
-            fos = new FileOutputStream(FILE_DIR.getPath() + "/" + this.dbName + ".db");
+            fos = new FileOutputStream(this.dbFile.getPath());
             fos.write(header);
             fos.write(hmac);
             fos.write(encryptedBytes);
             fos.flush();
             fos.close();
-            System.out.println("Database has been written to '" + FILE_DIR.getPath() + "/" + this.dbName + ".db'");
+            System.out.println("Database has been written to '" + this.dbFile.getPath() + "'");
             modified = false;
         } catch (IOException e) {
             e.printStackTrace();
@@ -317,7 +549,6 @@ public class PasswordManager {
                 this.save();
             }
         }
-
         System.exit(0);
     }
 }
