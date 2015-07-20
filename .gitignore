@@ -2,6 +2,7 @@
 .classpath
 .project
 Test.*
+*.class
 files/
 keys/
 compile
