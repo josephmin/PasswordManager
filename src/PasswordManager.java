@@ -11,6 +11,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.InvalidKeyException;
 import java.util.Arrays;
+import java.util.InputMismatchException;
 import java.util.Scanner;
 
 public class PasswordManager {
@@ -35,6 +36,7 @@ public class PasswordManager {
     public static void help() {
         System.out.println("init: Create a new database.\n" +
             "keygen: Generate public/private RSA keys.\n" +
+            "load: Load a password database.\n" +
             "sign: Sign a database.\n" +
             "verify: Verify a signed database.\n");
     }
@@ -45,11 +47,19 @@ public class PasswordManager {
         while (!valid) {
             System.out.print("Enter name to save database: ");
             dbName = scan.nextLine();
+            if (dbName.length() == 0) {
+                System.out.println("Name cannot be null.\n");
+            } else {
             this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
-            if (this.dbFile.exists()) {
-                System.out.print("A database named '" + dbName + "' already exists.\nOverwrite (y/n)? ");
-                String overwrite = scan.nextLine();
-                if (overwrite.equalsIgnoreCase("y")) {
+                if (this.dbFile.exists()) {
+                    System.out.print("A database named '" + dbName + "' already exists.\nOverwrite (y/n)? ");
+                    String overwrite = scan.nextLine();
+                    if (overwrite.equalsIgnoreCase("y")) {
+                        valid = true;
+                    } else if (!overwrite.equalsIgnoreCase("n")) {
+                        System.out.println("That's not valid.");
+                    }
+                } else {
                     valid = true;
                 }
             }
@@ -133,11 +143,28 @@ public class PasswordManager {
 
     public void keygen() {
         //TODO: password encrypt key
-        System.out.print("Generating public/private RSA key pair.\n" +
-            "Enter file in which to save the keys: ");
-        String keyName = scan.nextLine();
-        File pubFile = new File(KEY_DIR.getPath() + "/" + keyName + ".pub");
-        File privFile = new File(KEY_DIR.getPath() + "/" + keyName + ".priv");
+        System.out.println("Generating public/private RSA key pair.");
+        String keyName = null;
+        boolean valid = false;
+        while (!valid) {
+            System.out.print("Enter file in which to save the keys: ");
+            keyName = scan.nextLine();
+            if (keyName.length() == 0) {
+                System.out.println("File name should not be null.\n");
+            } else {
+                valid = true;
+            }
+        }
+
+        File pubFile = null;
+        File privFile = null;
+        if (keyName != null) {
+            pubFile = new File(KEY_DIR.getPath() + "/" + keyName + ".pub");
+            privFile = new File(KEY_DIR.getPath() + "/" + keyName + ".priv");
+        } else {
+            System.err.println("There was an error creating the RSA public/private keys.");
+            System.exit(1);
+        }
 
         if (pubFile.exists() || privFile.exists()) {
             System.out.print("An RSA key for '" + keyName + "' already exists. Overwrite (y/n)? ");
@@ -183,6 +210,7 @@ public class PasswordManager {
             this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
             if (this.dbFile.exists()) {
                 exist = true;
+                System.out.println("Loading '" + this.dbFile.getPath() + "'");
             } else {
                 System.out.println("'" + dbName + "' does not exist. Please confirm the name and try again.\n");
             }
@@ -272,16 +300,20 @@ public class PasswordManager {
 
     public void verify() {
         boolean exist = false;
-        String dbName;
+        String dbPath;
         File dbFile = null;
         while (!exist) {
-            System.out.print("Enter name of signed database: ");
-            dbName = scan.nextLine();
-            dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".signed");
-            if (dbFile.exists()) {
-                exist = true;
+            System.out.print("Enter path to signed database: ");
+            dbPath = scan.nextLine();
+            if (dbPath.length() > 0) {
+                dbFile = new File(dbPath);
+                if (dbFile.exists() && dbFile.isFile()) {
+                    exist = true;
+                } else {
+                    System.out.println("'" + dbFile.getPath() + "' is not a valid file. Check path and try again.\n");
+                }
             } else {
-                System.out.println("'" + dbFile.getPath() + "' does not exist. Check path and try again.\n");
+                System.out.println("Invalid path.");
             }
         }
 
@@ -371,7 +403,13 @@ public class PasswordManager {
                 "7. Save and exit\n" +
                 "8. Exit\n");
             System.out.print("Your choice (1-8): ");
-            int choice = scan.nextInt();
+            int choice = 0;
+            try {
+                choice = scan.nextInt();
+            } catch (InputMismatchException e) {
+                choice = -1;
+            }
+
             scan.nextLine(); // eat new line
 
             switch (choice) {
@@ -404,10 +442,17 @@ public class PasswordManager {
             }
 
             System.out.print("\nEnter entry number to view (0 to go back to the menu): ");
-            int choice = scan.nextInt();
+            int choice = 0;
+            try {
+                choice = scan.nextInt();
+            } catch (InputMismatchException e) {
+                System.out.println("Invalid choice. Going back to the main menu.\n");
+            }
             scan.nextLine();
             if (choice > 0 && choice < i) {
                 this.get(aliases[choice - 1]);
+            } else if (choice != 0) {
+                System.out.println("Invalid choice. Going back to the main menu.\n");
             }
         }
     }
@@ -517,9 +562,27 @@ public class PasswordManager {
             System.out.println("This database does not have a password. Create a password now.\n");
             char[] pwd = this.createPassword();
             km = new KeyManager(pwd);
-            System.out.print("Enter name to save this database: ");
-            String dbName = scan.nextLine();
-            this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
+            String dbName = null;
+            boolean valid = false;
+            while (!valid) {
+                System.out.print("Enter name to save this database: ");
+                dbName = scan.nextLine();
+                if (dbName.length() > 0) {
+                    this.dbFile = new File(FILE_DIR.getPath() + "/" + dbName + ".db");
+                    if (this.dbFile.exists()) {
+                        System.out.print("A database named '" + dbName + "' already exists.\n" +
+                            "Overwrite (y/n)? ");
+                        String overwrite = scan.nextLine();
+                        if (overwrite.equalsIgnoreCase("y")) {
+                            valid = true;
+                        } else if (!overwrite.equalsIgnoreCase("n")) {
+                            System.out.println("That's not valid.\n");
+                        }
+                    }
+                }
+
+            }
+
         }
 
         byte[] header = km.getHeader();
@@ -550,6 +613,7 @@ public class PasswordManager {
                 this.save();
             }
         }
+        scan.close();
         System.exit(0);
     }
 }

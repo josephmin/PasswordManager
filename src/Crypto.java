@@ -1,5 +1,4 @@
 import java.io.ByteArrayOutputStream;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.Key;
 import java.security.PublicKey;
@@ -17,7 +16,6 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
-import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
 
 public class Crypto {
@@ -155,7 +153,6 @@ public class Crypto {
     public static Key keyUnwrap(PrivateKey priv, byte[] wrappedKey, String algorithm)
         throws InvalidKeyException {
         Cipher c;
-        IvParameterSpec ivSpec;
         Key unwrappedKey = null;
 
         try {

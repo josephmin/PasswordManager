@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.lang.IllegalArgumentException;
 import java.io.ObjectInputStream;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -25,9 +24,7 @@ import javax.crypto.spec.SecretKeySpec;
 public class KeyManager {
     private static final int IV_LENGTH = 16;
     private static final int AES_KEY_LENGTH = 128; // Java does not support 192 or 256 bit AES keys
-    private static final int AES_BYTES = AES_KEY_LENGTH/8;
     private static final int HMAC_KEY_LENGTH = 256; // HMAC SHA256
-    private static final int HMAC_BYTES = HMAC_KEY_LENGTH/8;
     private static final int NUM_ITERATIONS = 32768; // (0.5)*(2^16)
     private static final int WRAPPED_AES_LENGTH = 32;
     private static final int RSA_WRAPPED_AES_LENGTH = 256;
@@ -120,13 +117,13 @@ public class KeyManager {
     public static PublicKey readPublic(File publicKeyFile) {
         ObjectInputStream ois;
         Object o = null;
-        PublicKey publicKey = null;
+        PublicKey pk = null;
         try {
             ois = new ObjectInputStream(new FileInputStream(publicKeyFile));
             o = ois.readObject();
             ois.close();
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            pk = null;
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
@@ -134,22 +131,22 @@ public class KeyManager {
         }
 
         if (o instanceof PublicKey) {
-            publicKey = (PublicKey) o;
+            pk = (PublicKey) o;
         }
 
-        return publicKey;
+        return pk;
     }
 
     public static PrivateKey readPrivate(File privateKeyFile) {
         ObjectInputStream ois;
         Object o = null;
-        PrivateKey privateKey = null;
+        PrivateKey pk = null;
         try {
             ois = new ObjectInputStream(new FileInputStream(privateKeyFile));
             o = ois.readObject();
             ois.close();
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            pk = null;
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
@@ -157,10 +154,10 @@ public class KeyManager {
         }
 
         if (o instanceof PrivateKey) {
-            privateKey = (PrivateKey) o;
+            pk = (PrivateKey) o;
         }
 
-        return privateKey;
+        return pk;
     }
 
     public void setPublic(PublicKey pk) {
