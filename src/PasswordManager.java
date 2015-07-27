@@ -113,6 +113,7 @@ public class PasswordManager {
             fis.read(hmac);
             dbBytes = new byte[fis.available()];
             fis.read(dbBytes);
+            fis.close();
         } catch (FileNotFoundException e) {
             System.err.println("That password database does not exist. Exiting.");
             System.exit(1);
@@ -231,6 +232,7 @@ public class PasswordManager {
             dbBytes = new byte[fis.available()];
             fis.read(dbBytes);
             this.km = new KeyManager(password, header);
+            fis.close();
             if (Crypto.verifyHmac(this.km.getHmacKey(), hmac, dbBytes)) {
                 this.pd = new PasswordDatabase(Crypto.aesDecrypt(this.km.getAesKey(), this.km.getIV(), dbBytes));
             } else {
@@ -359,7 +361,7 @@ public class PasswordManager {
             fis = new FileInputStream(dbFile);
             fileBytes = new byte[fis.available()];
             fis.read(fileBytes);
-
+            fis.close();
             byte[] data = Crypto.verify(publicKey, fileBytes);
             byte[] header = new byte[SIGN_HEADER_LENGTH];
             byte[] dbBytes;
@@ -391,8 +393,7 @@ public class PasswordManager {
     }
 
     private void menu() {
-        boolean done = false;
-        while(!done) {
+        while(true) { //infinite loop until exit
             System.out.println("What would you like to do?\n" +
                 "1. List entries\n" +
                 "2. View an entry\n" +
