@@ -193,6 +193,8 @@ public class KeyManager {
     }
 
     public byte[] getHeader() {
+        this.generateIV(); //generate new IV
+        this.generatePbKey(); //update PbKey
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
             baos.write(this.iv);
@@ -205,6 +207,8 @@ public class KeyManager {
     }
 
     public byte[] getHeader(PublicKey pubKey) {
+        this.generateIV(); //generate new IV
+        this.generateAesKey(); //generate new AES key
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
             baos.write(this.iv);

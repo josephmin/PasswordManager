@@ -581,9 +581,7 @@ public class PasswordManager {
                         }
                     }
                 }
-
             }
-
         }
 
         byte[] header = km.getHeader();
