@@ -15,6 +15,7 @@ import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKeyFactory;
@@ -34,6 +35,7 @@ public class KeyManager {
 
     private SecureRandom rand;
     private char[] password;
+    private byte[] salt;
     private byte[] iv;
     private Key pbKey; // password-based key
     private Key aesKey; // AES key
@@ -52,7 +54,8 @@ public class KeyManager {
     public KeyManager(char[] password) {
         this();
         this.password = password;
-        this.generateIV();
+        this.salt = this.generateIV();
+        this.iv = this.generateIV();
         this.generatePbKey();
         this.generateAesKey();
         this.generateHmacKey();
@@ -61,33 +64,39 @@ public class KeyManager {
     public KeyManager(char[] password, byte[] header) throws IncorrectPasswordException {
         this();
         this.password = password;
+        this.salt = new byte[IV_LENGTH];
         this.iv = new byte[IV_LENGTH];
-        byte[] kBytes = new byte[WRAPPED_AES_LENGTH];
-        byte[] lBytes = new byte[WRAPPED_HMAC_LENGTH];
+        byte[] kBytes = new byte[IV_LENGTH + WRAPPED_AES_LENGTH];
+        byte[] lBytes = new byte[IV_LENGTH + WRAPPED_HMAC_LENGTH];
         ByteArrayInputStream bais = new ByteArrayInputStream(header);
 
         try {
-            bais.read(this.iv);
+            bais.read(this.salt);
             bais.read(kBytes);
             bais.read(lBytes);
+            bais.read(this.iv);
         } catch (IOException e) {
             e.printStackTrace();
         }
         this.generatePbKey();
-        this.aesKey = Crypto.keyUnwrap(this.pbKey, this.iv, kBytes, "AES");
-        this.hmacKey = Crypto.keyUnwrap(this.pbKey, this.iv, lBytes, "HMAC");
+        this.aesKey = Crypto.keyUnwrap(this.pbKey, Arrays.copyOfRange(kBytes, 0, IV_LENGTH),
+            Arrays.copyOfRange(kBytes, IV_LENGTH, kBytes.length), "AES");
+        this.hmacKey = Crypto.keyUnwrap(this.pbKey, Arrays.copyOfRange(lBytes, 0, IV_LENGTH),
+            Arrays.copyOfRange(lBytes, IV_LENGTH, lBytes.length), "HMAC");
     }
 
     public KeyManager(PrivateKey privKey, byte[] header) throws InvalidKeyException {
         this();
+        this.salt = new byte[IV_LENGTH];
         this.iv = new byte[IV_LENGTH];
         byte[] aesKeyBytes = new byte[RSA_WRAPPED_AES_LENGTH];
 
         ByteArrayInputStream bais = new ByteArrayInputStream(header);
 
         try {
-            bais.read(this.iv);
+            bais.read(this.salt);
             bais.read(aesKeyBytes);
+            bais.read(this.iv);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -176,10 +185,6 @@ public class KeyManager {
         return this.privateKey;
     }
 
-    public Key getPbKey() {
-        return this.pbKey;
-    }
-
     public Key getAesKey() {
         return this.aesKey;
     }
@@ -193,13 +198,18 @@ public class KeyManager {
     }
 
     public byte[] getHeader() {
-        this.generateIV(); //generate new IV
+        this.salt = this.generateIV(); //generate new IV
         this.generatePbKey(); //update PbKey
+        byte[] kIV = this.generateIV();
+        byte[] lIV = this.generateIV();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
+            baos.write(this.salt);
+            baos.write(kIV);
+            baos.write(Crypto.keyWrap(this.pbKey, kIV, this.aesKey));
+            baos.write(lIV);
+            baos.write(Crypto.keyWrap(this.pbKey, lIV, this.hmacKey));
             baos.write(this.iv);
-            baos.write(Crypto.keyWrap(this.pbKey, this.iv, this.aesKey));
-            baos.write(Crypto.keyWrap(this.pbKey, this.iv, this.hmacKey));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -207,12 +217,13 @@ public class KeyManager {
     }
 
     public byte[] getHeader(PublicKey pubKey) {
-        this.generateIV(); //generate new IV
+        this.salt = this.generateIV(); //generate new IV
         this.generateAesKey(); //generate new AES key
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
-            baos.write(this.iv);
+            baos.write(this.salt);
             baos.write(Crypto.keyWrap(pubKey, this.aesKey));
+            baos.write(this.iv);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -224,7 +235,7 @@ public class KeyManager {
         KeySpec pwSpec;
         try {
             factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM);
-            pwSpec = new PBEKeySpec(this.password, this.iv, NUM_ITERATIONS, AES_KEY_LENGTH);
+            pwSpec = new PBEKeySpec(this.password, this.salt, NUM_ITERATIONS, AES_KEY_LENGTH);
             this.pbKey = new SecretKeySpec(factory.generateSecret(pwSpec).getEncoded(), "AES");
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -255,8 +266,9 @@ public class KeyManager {
         }
     }
 
-    private void generateIV() {
-        this.iv = new byte[IV_LENGTH];
+    private byte[] generateIV() {
+        byte[] iv = new byte[IV_LENGTH];
         this.rand.nextBytes(iv);
+        return iv;
     }
 }

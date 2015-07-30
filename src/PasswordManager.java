@@ -17,8 +17,8 @@ import java.util.Scanner;
 public class PasswordManager {
     private static final File KEY_DIR = new File("keys");
     private static final File FILE_DIR = new File("files");
-    private static final int HEADER_LENGTH = 96; //iv + aesKey + hmacKey
-    private static final int SIGN_HEADER_LENGTH = 16 + 256;
+    private static final int HEADER_LENGTH = 144; //iv + aesKey + hmacKey
+    private static final int SIGN_HEADER_LENGTH = 16 + 256 + 16;
     private static final int HMAC_LENGTH = 32;
 
     private Scanner scan;
